@@ -1,0 +1,30 @@
+rules_version = '2';
+
+// Evidence photos. Readable publicly (they are part of the public record),
+// writable only by the person the path belongs to, capped so a single upload
+// cannot exhaust a citizen's data plan or the project's quota.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function underSizeLimit() {
+      return request.resource.size < 8 * 1024 * 1024;
+    }
+
+    match /reports/{uid}/{demandId}/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.uid == uid
+                   && isImage()
+                   && underSizeLimit();
+    }
+
+    match /verifications/{verificationId}/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null && isImage() && underSizeLimit();
+    }
+  }
+}

@@ -1,0 +1,113 @@
+rules_version = '2';
+
+// JanMaang security model.
+//
+// The guiding rule: a citizen owns what they said, and nothing else. Ranking,
+// clustering, budget and verification outcomes are written only by Cloud
+// Functions running with admin credentials, so no client can promote its own
+// demand up the queue.
+service cloud.firestore {
+  function signedIn() {
+    return request.auth != null;
+  }
+
+  function isOwner(uid) {
+    return signedIn() && request.auth.uid == uid;
+  }
+
+  function isOfficer() {
+    return signedIn() && request.auth.token.officer == true;
+  }
+
+  // Fields only the server may ever set or change.
+  function serverOnlyFields() {
+    return [
+      'rank', 'totalRanked', 'priorityScore', 'scoreBreakdown',
+      'clusterId', 'supporterCount', 'status', 'code'
+    ];
+  }
+
+  function touchesServerFields() {
+    return request.resource.data.diff(resource.data)
+      .affectedKeys().hasAny(serverOnlyFields().toSet());
+  }
+
+  match /databases/{database}/documents {
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isOfficer();
+      allow create: if isOwner(uid)
+                    && request.resource.data.uid == uid
+                    // Trust level and the officer flag are granted server-side.
+                    && !request.resource.data.keys().hasAny(['trustLevel', 'isFieldOfficer']);
+      allow update: if isOwner(uid)
+                    && !request.resource.data.diff(resource.data)
+                        .affectedKeys().hasAny(['trustLevel', 'isFieldOfficer'].toSet());
+      allow delete: if false;
+    }
+
+    // Demands are public — the whole point is that anyone can audit the queue.
+    match /demands/{demandId} {
+      allow read: if true;
+
+      allow create: if signedIn()
+                    && request.resource.data.reporterId == request.auth.uid
+                    && request.resource.data.status == 'reported'
+                    && request.resource.data.title is string
+                    && request.resource.data.title.size() > 0
+                    && request.resource.data.title.size() <= 200
+                    && !request.resource.data.keys().hasAny(['rank', 'priorityScore', 'clusterId']);
+
+      // A reporter may correct their own description; they may never move
+      // their demand's rank, status or cluster.
+      allow update: if isOwner(resource.data.reporterId)
+                    && !touchesServerFields();
+
+      allow delete: if false;
+
+      match /supporters/{uid} {
+        allow read: if true;
+        // Joining is idempotent and self-authored; the supporter count is
+        // recomputed by a Function, not by the client.
+        allow create: if isOwner(uid);
+        allow update, delete: if false;
+      }
+
+      match /timeline/{eventId} {
+        allow read: if true;
+        allow write: if false; // server only
+      }
+    }
+
+    match /clusters/{clusterId} {
+      allow read: if true;
+      allow write: if false; // written by the clustering Function
+    }
+
+    match /verifications/{verificationId} {
+      allow read: if true;
+      // Verifications go through the submitVerification callable so the
+      // geotag and timestamp can be validated before they are trusted.
+      allow write: if false;
+    }
+
+    match /ledgerEntries/{entryId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /allocations/{allocationId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /objections/{objectionId} {
+      allow read: if isOfficer() || isOwner(resource.data.uid);
+      allow create: if signedIn()
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.reason is string
+                    && request.resource.data.reason.size() >= 10;
+      allow update, delete: if false;
+    }
+  }
+}
