@@ -1,0 +1,44 @@
+import Link from "next/link";
+import { Icon } from "@/components/icon";
+import { Avatar } from "@/components/ui";
+
+export default function CollaborateLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-30 flex h-18 items-center gap-4 border-b border-line bg-surface/85 px-4 backdrop-blur lg:px-8">
+        <Link
+          aria-label="Back to dashboard"
+          className="flex size-10 items-center justify-center rounded-full text-ink hover:bg-card-muted"
+          href="/dashboard"
+        >
+          <Icon name="arrow-left" size={22} />
+        </Link>
+        <p className="text-xl font-bold text-ink">Jan Setu OS</p>
+
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            aria-label="Notifications"
+            className="hidden size-10 items-center justify-center rounded-full text-ink-muted hover:bg-card-muted sm:flex"
+            type="button"
+          >
+            <Icon name="bell" size={20} />
+          </button>
+          <button
+            aria-label="Help"
+            className="hidden size-10 items-center justify-center rounded-full text-ink-muted hover:bg-card-muted sm:flex"
+            type="button"
+          >
+            <Icon name="help" size={20} />
+          </button>
+          <Avatar name="Aisha Patel" size={40} tone="navy" />
+        </div>
+      </header>
+
+      <main className="flex-1 px-4 py-8 lg:px-8">{children}</main>
+    </div>
+  );
+}
